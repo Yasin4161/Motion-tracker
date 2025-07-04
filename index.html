@@ -62,7 +62,7 @@
   <p id="status">Kamerayı başlatmak için dokun.</p>
   <button id="btn-start">Kamerayı Başlat</button>
 
-  <!-- Ses dosyası -->
+  <!-- Ses -->
   <audio id="alert-sound" src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" preload="auto"></audio>
 
   <script>
@@ -78,17 +78,25 @@
 
     const MOTION_THRESHOLD = 40;
     const PIXEL_COUNT_THRESHOLD = 600;
+
     let streaming = false;
+    let motionSoundEnabled = false;
 
     startBtn.addEventListener("click", async () => {
       try {
+        // Ses izni tetikleniyor
+        await audio.play();
+        audio.pause();
+        audio.currentTime = 0;
+        motionSoundEnabled = true;
+
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
         video.srcObject = stream;
         statusText.textContent = "Kamera başlatıldı. Hareket algılanıyor...";
         startBtn.disabled = true;
         streaming = true;
       } catch (err) {
-        statusText.textContent = `Kameraya erişim hatası: ${err.message}`;
+        statusText.textContent = `Kamera hatası: ${err.message}`;
       }
     });
 
@@ -141,11 +149,9 @@
         ctx.lineWidth = 4;
         ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
 
-        if (audio.paused) {
+        if (motionSoundEnabled && audio.paused) {
           audio.currentTime = 0;
-          audio.play().catch(err => {
-            console.error("Ses çalınamadı:", err);
-          });
+          audio.play().catch(e => console.error("Ses çalma hatası:", e));
         }
       }
 
