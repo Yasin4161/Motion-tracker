@@ -1,177 +1,168 @@
 <!DOCTYPE html><html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Motion Tracker</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }body {
-    background: #000;
-    font-family: Arial, sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    color: #fff;
-  }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Motion Tracker with Beep</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }body {
+  background: #000;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: #fff;
+}
 
-  #wrapper {
-    position: relative;
-    max-width: 100%;
-    overflow: hidden;
-  }
+#wrapper {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+}
 
-  video,
-  canvas {
-    width: 100vw; /* full screen width on mobile */
-    height: auto;
-    max-height: 85vh; /* leave some room for text */
-    border-radius: 8px;
-  }
+video, canvas {
+  width: 100vw;
+  height: auto;
+  max-height: 85vh;
+  border-radius: 8px;
+}
 
-  canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: none; /* so touches go through */
-  }
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
 
-  #status {
-    margin-top: 1rem;
-    text-align: center;
-  }
+#status {
+  margin-top: 1rem;
+  text-align: center;
+}
 
-  #btn-start {
-    margin-top: 1rem;
-    padding: 0.6rem 1.2rem;
-    background: #ff0040; /* red */
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    font-size: 1rem;
-    font-weight: bold;
-    cursor: pointer;
-  }
+#btn-start {
+  margin-top: 1rem;
+  padding: 0.6rem 1.2rem;
+  background: #ff0040;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+}
 
-  #btn-start:disabled {
-    opacity: 0.5;
-  }
-</style>
+#btn-start:disabled {
+  opacity: 0.5;
+}
 
-  </head>
-  <body>
-    <h1>Motion Tracker (Demo)</h1>
-    <div id="wrapper">
-      <video id="video" playsinline autoplay muted></video>
-      <canvas id="canvas"></canvas>
-    </div>
-    <p id="status">Tap "Start Camera" to begin.</p>
-    <button id="btn-start">Start Camera</button><script>
-  // HTML elements
-  const video = document.getElementById("video");
-  const canvas = document.getElementById("canvas");
-  const statusText = document.getElementById("status");
-  const startBtn = document.getElementById("btn-start");
+  </style>
+</head>
+<body>
+  <h1>Motion Tracker with Beep</h1>
+  <div id="wrapper">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="canvas"></canvas>
+  </div>
+  <p id="status">Tap "Start Camera" to begin.</p>
+  <button id="btn-start">Start Camera</button>  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const statusText = document.getElementById("status");
+    const startBtn = document.getElementById("btn-start");
 
-  const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d");
+    let prevCanvas = document.createElement("canvas");
+    let prevCtx = prevCanvas.getContext("2d");
 
-  // Off‑screen canvas for previous frame
-  let prevCanvas = document.createElement("canvas");
-  let prevCtx = prevCanvas.getContext("2d");
+    const MOTION_THRESHOLD = 40;
+    const PIXEL_COUNT_THRESHOLD = 600;
+    let streaming = false;
 
-  // Parameters
-  const MOTION_THRESHOLD = 40; // per‑pixel diff threshold (0‑765)
-  const PIXEL_COUNT_THRESHOLD = 600; // how many diff pixels before we consider it motion
+    const beepSound = new AudioContext();
 
-  let streaming = false;
+    function playBeep() {
+      const oscillator = beepSound.createOscillator();
+      const gainNode = beepSound.createGain();
 
-  startBtn.addEventListener("click", async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-      video.srcObject = stream;
-      statusText.textContent = "Camera initialized. Detecting motion...";
-      startBtn.disabled = true;
-      streaming = true;
-    } catch (err) {
-      statusText.textContent = `Error accessing camera: ${err.message}`;
-    }
-  });
+      oscillator.connect(gainNode);
+      gainNode.connect(beepSound.destination);
 
-  video.addEventListener("loadedmetadata", () => {
-    // Match canvas sizes to video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    prevCanvas.width = video.videoWidth;
-    prevCanvas.height = video.videoHeight;
+      oscillator.type = "square";
+      oscillator.frequency.setValueAtTime(1000, beepSound.currentTime);
+      oscillator.start();
+      gainNode.gain.setValueAtTime(1, beepSound.currentTime);
 
-    // Kick off drawing loop
-    requestAnimationFrame(processFrame);
-  });
-
-  function processFrame() {
-    if (!streaming) {
-      requestAnimationFrame(processFrame);
-      return;
+      oscillator.stop(beepSound.currentTime + 0.1);
     }
 
-    // Draw current frame onto current canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Get image data from both frames
-    const currFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const prevFrame = prevCtx.getImageData(0, 0, prevCanvas.width, prevCanvas.height);
-
-    const currData = currFrame.data;
-    const prevData = prevFrame.data;
-
-    let motionPixels = 0;
-    let minX = canvas.width,
-      minY = canvas.height,
-      maxX = 0,
-      maxY = 0;
-
-    // Compare pixels
-    for (let i = 0; i < currData.length; i += 4) {
-      const diff =
-        Math.abs(currData[i] - prevData[i]) +
-        Math.abs(currData[i + 1] - prevData[i + 1]) +
-        Math.abs(currData[i + 2] - prevData[i + 2]);
-
-      if (diff > MOTION_THRESHOLD) {
-        motionPixels++;
-        const pixelIndex = i / 4;
-        const x = pixelIndex % canvas.width;
-        const y = Math.floor(pixelIndex / canvas.width);
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
+    startBtn.addEventListener("click", async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false
+        });
+        video.srcObject = stream;
+        statusText.textContent = "Camera initialized. Detecting motion...";
+        startBtn.disabled = true;
+        streaming = true;
+      } catch (err) {
+        statusText.textContent = `Error accessing camera: ${err.message}`;
       }
+    });
+
+    video.addEventListener("loadedmetadata", () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      prevCanvas.width = video.videoWidth;
+      prevCanvas.height = video.videoHeight;
+      requestAnimationFrame(processFrame);
+    });
+
+    function processFrame() {
+      if (!streaming) {
+        requestAnimationFrame(processFrame);
+        return;
+      }
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const currFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const prevFrame = prevCtx.getImageData(0, 0, prevCanvas.width, prevCanvas.height);
+      const currData = currFrame.data;
+      const prevData = prevFrame.data;
+
+      let motionPixels = 0;
+      let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+
+      for (let i = 0; i < currData.length; i += 4) {
+        const diff = Math.abs(currData[i] - prevData[i]) +
+          Math.abs(currData[i + 1] - prevData[i + 1]) +
+          Math.abs(currData[i + 2] - prevData[i + 2]);
+
+        if (diff > MOTION_THRESHOLD) {
+          motionPixels++;
+          const pixelIndex = i / 4;
+          const x = pixelIndex % canvas.width;
+          const y = Math.floor(pixelIndex / canvas.width);
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      if (motionPixels > PIXEL_COUNT_THRESHOLD) {
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+        playBeep();
+      }
+
+      prevCtx.drawImage(video, 0, 0, prevCanvas.width, prevCanvas.height);
+      requestAnimationFrame(processFrame);
     }
-
-    // Clear previous drawing
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw video frame again, so rectangle sits on top
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // If we detected enough motion pixels, draw rectangle
-    if (motionPixels > PIXEL_COUNT_THRESHOLD) {
-      ctx.strokeStyle = "red";
-      ctx.lineWidth = 4;
-      ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-    }
-
-    // Save current frame to prevCanvas for next iteration
-    prevCtx.drawImage(video, 0, 0, prevCanvas.width, prevCanvas.height);
-
-    requestAnimationFrame(processFrame);
-  }
-</script>
-
-  </body>
+  </script></body>
 </html>
