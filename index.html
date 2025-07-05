@@ -5,135 +5,112 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Motion Tracker</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #000;
-      font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      color: #fff;
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      background:#000;font-family:Arial,Helvetica,sans-serif;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      min-height:100vh;color:#fff;text-align:center
     }
-    #wrapper {
-      position: relative;
-      max-width: 100%;
-      overflow: hidden;
+    #wrapper{position:relative;max-width:100%;overflow:hidden}
+    video,canvas{width:100vw;height:auto;max-height:85vh;border-radius:8px}
+    canvas{position:absolute;top:0;left:0;pointer-events:none}
+    #btn-start{
+      margin-top:1rem;padding:.6rem 1.2rem;background:#ff0040;color:#fff;
+      border:none;border-radius:6px;font-size:1rem;font-weight:bold;cursor:pointer
     }
-    video, canvas {
-      width: 100vw;
-      height: auto;
-      max-height: 85vh;
-      border-radius: 8px;
-    }
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-    }
-    #status {
-      margin-top: 1rem;
-      text-align: center;
-    }
-    #btn-start {
-      margin-top: 1rem;
-      padding: 0.6rem 1.2rem;
-      background: #ff0040;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    #btn-start:disabled {
-      opacity: 0.5;
-    }
+    #btn-start:disabled{opacity:.5}
+    #status{margin-top:1rem}
   </style>
 </head>
 <body>
   <h1>Motion Tracker (Demo)</h1>
+
   <div id="wrapper">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="canvas"></canvas>
   </div>
-  <p id="status">Kamerayı başlatmak için dokun.</p>
-  <button id="btn-start">Kamerayı Başlat</button>
 
-  <!-- Ses -->
-  <audio id="alert-sound" src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" preload="auto"></audio>
+  <button id="btn-start">Kamerayı Başlat</button>
+  <p id="status">Başlamak için butona dokun.</p>
 
   <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const statusText = document.getElementById("status");
-    const startBtn = document.getElementById("btn-start");
-    const ctx = canvas.getContext("2d");
-    const audio = document.getElementById("alert-sound");
+    // HTML elemanları
+    const video      = document.getElementById("video");
+    const canvas     = document.getElementById("canvas");
+    const ctx        = canvas.getContext("2d");
+    const statusTxt  = document.getElementById("status");
+    const startBtn   = document.getElementById("btn-start");
 
-    let prevCanvas = document.createElement("canvas");
-    let prevCtx = prevCanvas.getContext("2d");
+    // Önceki kare için off-screen canvas
+    const prevCanvas = document.createElement("canvas");
+    const prevCtx    = prevCanvas.getContext("2d");
 
-    const MOTION_THRESHOLD = 40;
-    const PIXEL_COUNT_THRESHOLD = 600;
+    // Parametreler
+    const MOTION_THRESHOLD      = 40;  // piksel fark eşiği
+    const PIXEL_COUNT_THRESHOLD = 600; // ne kadar piksel farkı “hareket” sayalım
+    const BEEP_COOLDOWN_MS      = 500; // iki bip arası minimum süre
 
-    let streaming = false;
+    let streaming          = false;
+    let audioCtx           = null;
     let motionSoundEnabled = false;
+    let lastBeepTime       = 0;
 
+    // Kullanıcı tıklayınca kamera + ses başlat
     startBtn.addEventListener("click", async () => {
       try {
-        // Ses izni tetikleniyor
-        await audio.play();
-        audio.pause();
-        audio.currentTime = 0;
-        motionSoundEnabled = true;
+        // Ses altyapısı
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          await audioCtx.resume(); // mobilde izni almak için tıklama içinde çağırıyoruz
+          motionSoundEnabled = true;
+        }
 
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+        // Kamera
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false
+        });
         video.srcObject = stream;
-        statusText.textContent = "Kamera başlatıldı. Hareket algılanıyor...";
+        statusTxt.textContent = "Kamera başlatıldı, hareket algılanıyor...";
         startBtn.disabled = true;
         streaming = true;
       } catch (err) {
-        statusText.textContent = `Kamera hatası: ${err.message}`;
+        statusTxt.textContent = `Kamera hatası: ${err.message}`;
       }
     });
 
+    // Kamera ölçüleri geldikten sonra
     video.addEventListener("loadedmetadata", () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      prevCanvas.width = video.videoWidth;
-      prevCanvas.height = video.videoHeight;
+      canvas.width       = video.videoWidth  || 640;
+      canvas.height      = video.videoHeight || 480;
+      prevCanvas.width   = canvas.width;
+      prevCanvas.height  = canvas.height;
       requestAnimationFrame(processFrame);
     });
 
+    // Ana döngü
     function processFrame() {
-      if (!streaming) {
-        requestAnimationFrame(processFrame);
-        return;
-      }
+      if (!streaming) { requestAnimationFrame(processFrame); return; }
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const currFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const prevFrame = prevCtx.getImageData(0, 0, prevCanvas.width, prevCanvas.height);
+      const prevFrame = prevCtx.getImageData(0, 0, canvas.width, canvas.height);
 
-      const currData = currFrame.data;
-      const prevData = prevFrame.data;
+      const curr = currFrame.data;
+      const prev = prevFrame.data;
 
       let motionPixels = 0;
       let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
 
-      for (let i = 0; i < currData.length; i += 4) {
-        const diff = Math.abs(currData[i] - prevData[i]) +
-                     Math.abs(currData[i + 1] - prevData[i + 1]) +
-                     Math.abs(currData[i + 2] - prevData[i + 2]);
-
+      for (let i = 0; i < curr.length; i += 4) {
+        const diff = Math.abs(curr[i]-prev[i]) +
+                     Math.abs(curr[i+1]-prev[i+1]) +
+                     Math.abs(curr[i+2]-prev[i+2]);
         if (diff > MOTION_THRESHOLD) {
           motionPixels++;
-          const pixelIndex = i / 4;
-          const x = pixelIndex % canvas.width;
-          const y = Math.floor(pixelIndex / canvas.width);
+          const index = i / 4;
+          const x = index % canvas.width;
+          const y = Math.floor(index / canvas.width);
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (x > maxX) maxX = x;
@@ -141,22 +118,41 @@
         }
       }
 
+      // Çerçeveyi tekrar çiz
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+      // Yeterli hareket varsa kırmızı kutu + bip
       if (motionPixels > PIXEL_COUNT_THRESHOLD) {
         ctx.strokeStyle = "red";
-        ctx.lineWidth = 4;
+        ctx.lineWidth   = 4;
         ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
 
-        if (motionSoundEnabled && audio.paused) {
-          audio.currentTime = 0;
-          audio.play().catch(e => console.error("Ses çalma hatası:", e));
+        const now = Date.now();
+        if (motionSoundEnabled && now - lastBeepTime > BEEP_COOLDOWN_MS) {
+          playBeep();   // Ses
+          lastBeepTime = now;
         }
       }
 
-      prevCtx.drawImage(video, 0, 0, prevCanvas.width, prevCanvas.height);
+      // Bu kareyi bir sonraki tur için sakla
+      prevCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
       requestAnimationFrame(processFrame);
+    }
+
+    // Bip sesi oluştur (Web Audio)
+    function playBeep() {
+      if (!audioCtx) return;
+      const duration = 0.12;         // saniye
+      const freq     = 1000;         // Hz
+      const osc      = audioCtx.createOscillator();
+      const gain     = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime); // ses yüksekliği
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
     }
   </script>
 </body>
