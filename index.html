@@ -1,180 +1,241 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="tr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Motion Tracker with Beep</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Tracker</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
+    :root {
+      --primary: #ff0040;
+      --bg: #1f1f1f;
+      --card-bg: #2a2a2a;
+      --text: #e0e0e0;
+      --accent: #ffffff;
+      --radius: 10px;
+      --font: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      background: #000;
-      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      padding: 2rem;
       min-height: 100vh;
-      color: #fff;
     }
-
-    #wrapper {
-      position: relative;
-      max-width: 100%;
-      overflow: hidden;
-    }
-
-    video, canvas {
-      width: 100vw;
-      height: auto;
-      max-height: 85vh;
-      border-radius: 8px;
-    }
-
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-    }
-
-    #status {
-      margin-top: 1rem;
+    header {
       text-align: center;
+      margin-bottom: 1.5rem;
     }
-
-    #btn-start {
-      margin-top: 1rem;
-      padding: 0.6rem 1.2rem;
-      background: #ff0040;
+    header h1 {
+      color: var(--accent);
+      font-size: 2.2rem;
+      margin-bottom: 0.3rem;
+    }
+    header p {
+      font-size: 1rem;
+      opacity: 0.8;
+    }
+    .controls {
+      background: var(--card-bg);
+      padding: 1rem 1.5rem;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      width: 100%;
+      max-width: 600px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .controls label {
+      flex-shrink: 0;
+      font-size: 1rem;
+    }
+    .controls input[type="range"] {
+      flex-grow: 1;
+      -webkit-appearance: none;
+      height: 6px;
+      background: var(--primary);
+      border-radius: 3px;
+      outline: none;
+    }
+    .controls input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid var(--primary);
+    }
+    .controls .value {
+      width: 3rem;
+      text-align: right;
+      font-weight: bold;
+      color: var(--accent);
+    }
+    #start-btn {
+      background: var(--primary);
       color: #fff;
       border: none;
-      border-radius: 6px;
+      padding: 0.75rem 1.5rem;
       font-size: 1rem;
-      font-weight: bold;
+      border-radius: var(--radius);
       cursor: pointer;
+      transition: background 0.3s;
+      margin-bottom: 1rem;
     }
-
-    #btn-start:disabled {
-      opacity: 0.5;
+    #start-btn:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+    #start-btn:hover:not(:disabled) {
+      background: #e30036;
+    }
+    #wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 600px;
+      background: #000;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    }
+    video, canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    canvas {
+      position: absolute;
+      top:0; left:0;
+      pointer-events:none;
+    }
+    #status {
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      opacity: 0.8;
+      text-align: center;
+      max-width: 600px;
+    }
+    footer {
+      margin-top: auto;
+      font-size: 0.8rem;
+      color: #777;
     }
   </style>
 </head>
 <body>
-  <h1>Motion Tracker with Beep</h1>
+  <header>
+    <h1>Motion Tracker</h1>
+    <p>Profesyonel izleme, ayarlanabilir hassasiyet ve uyarı sesi</p>
+  </header>  <div class="controls">
+    <label for="sensitivity">Hassasiyet:</label>
+    <input type="range" id="sensitivity" min="10" max="200" value="40">
+    <div class="value" id="sens-value">40</div>
+  </div><button id="start-btn">Kamerayı Başlat</button>
+
   <div id="wrapper">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="canvas"></canvas>
-  </div>
-  <p id="status">Tap "Start Camera" to begin.</p>
-  <button id="btn-start">Start Camera</button>
+  </div>  <p id="status">"Kamerayı Başlat" düğmesine tıklayın.</p>  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start-btn');
+    const status = document.getElementById('status');
+    const sensInput = document.getElementById('sensitivity');
+    const sensValue = document.getElementById('sens-value');
 
-  <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const statusText = document.getElementById("status");
-    const startBtn = document.getElementById("btn-start");
+    // Yan canvas
+    const prevCanvas = document.createElement('canvas');
+    const prevCtx = prevCanvas.getContext('2d');
 
-    const ctx = canvas.getContext("2d");
-    let prevCanvas = document.createElement("canvas");
-    let prevCtx = prevCanvas.getContext("2d");
-
-    const MOTION_THRESHOLD = 40;
-    const PIXEL_COUNT_THRESHOLD = 600;
+    let threshold = +sensInput.value;
+    const pixelThreshold = 600;
     let streaming = false;
+    let audioCtx;
 
-    let beepSound;
+    sensInput.addEventListener('input', () => {
+      threshold = +sensInput.value;
+      sensValue.textContent = threshold;
+    });
 
-    function initBeepSound() {
-      beepSound = new (window.AudioContext || window.webkitAudioContext)();
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const buffer = audioCtx.createBuffer(1,1,22050);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(audioCtx.destination);
+      src.start();
     }
 
     function playBeep() {
-      if (!beepSound) return;
-
-      const oscillator = beepSound.createOscillator();
-      const gainNode = beepSound.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(beepSound.destination);
-
-      oscillator.type = "square";
-      oscillator.frequency.setValueAtTime(1000, beepSound.currentTime);
-      gainNode.gain.setValueAtTime(1, beepSound.currentTime);
-
-      oscillator.start();
-      oscillator.stop(beepSound.currentTime + 0.1);
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      gain.gain.setValueAtTime(1, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
     }
 
-    startBtn.addEventListener("click", async () => {
+    startBtn.addEventListener('click', async () => {
       try {
-        initBeepSound();
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false
-        });
+        initAudio();
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
-        statusText.textContent = "Camera initialized. Detecting motion...";
-        startBtn.disabled = true;
         streaming = true;
-      } catch (err) {
-        statusText.textContent = `Error accessing camera: ${err.message}`;
+        startBtn.disabled = true;
+        status.textContent = 'Kamera başlatıldı. Hareket izleniyor...';
+      } catch (e) {
+        status.textContent = `Hata: ${e.message}`;
       }
     });
 
-    video.addEventListener("loadedmetadata", () => {
+    video.addEventListener('loadedmetadata', () => {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       prevCanvas.width = video.videoWidth;
       prevCanvas.height = video.videoHeight;
-      requestAnimationFrame(processFrame);
+      requestAnimationFrame(loop);
     });
 
-    function processFrame() {
-      if (!streaming) {
-        requestAnimationFrame(processFrame);
-        return;
-      }
+    function loop() {
+      if (!streaming) return requestAnimationFrame(loop);
+      ctx.drawImage(video,0,0);
+      const curr = ctx.getImageData(0,0,canvas.width,canvas.height).data;
+      const prev = prevCtx.getImageData(0,0,prevCanvas.width,prevCanvas.height).data;
+      let count=0, minX=canvas.width, minY=canvas.height, maxX=0, maxY=0;
 
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const currFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const prevFrame = prevCtx.getImageData(0, 0, prevCanvas.width, prevCanvas.height);
-      const currData = currFrame.data;
-      const prevData = prevFrame.data;
-
-      let motionPixels = 0;
-      let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-
-      for (let i = 0; i < currData.length; i += 4) {
-        const diff = Math.abs(currData[i] - prevData[i]) +
-          Math.abs(currData[i + 1] - prevData[i + 1]) +
-          Math.abs(currData[i + 2] - prevData[i + 2]);
-
-        if (diff > MOTION_THRESHOLD) {
-          motionPixels++;
-          const pixelIndex = i / 4;
-          const x = pixelIndex % canvas.width;
-          const y = Math.floor(pixelIndex / canvas.width);
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
+      for (let i=0; i<curr.length; i+=4) {
+        const diff = Math.abs(curr[i]-prev[i]) + Math.abs(curr[i+1]-prev[i+1]) + Math.abs(curr[i+2]-prev[i+2]);
+        if (diff>threshold) {
+          count++;
+          const p=i/4, x=p%canvas.width, y=Math.floor(p/canvas.width);
+          minX=Math.min(minX,x); minY=Math.min(minY,y);
+          maxX=Math.max(maxX,x); maxY=Math.max(maxY,y);
         }
       }
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      if (motionPixels > PIXEL_COUNT_THRESHOLD) {
-        ctx.strokeStyle = "red";
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(video,0,0);
+      if (count>pixelThreshold) {
+        ctx.strokeStyle = 'var(--primary)';
         ctx.lineWidth = 4;
-        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+        ctx.strokeRect(minX,minY,maxX-minX,maxY-minY);
         playBeep();
       }
 
-      prevCtx.drawImage(video, 0, 0, prevCanvas.width, prevCanvas.height);
-      requestAnimationFrame(processFrame);
+      prevCtx.drawImage(video,0,0);
+      requestAnimationFrame(loop);
     }
-  </script>
+  </script>  <footer>© 2025 Motion Tracker</footer>
 </body>
 </html>
