@@ -79,9 +79,15 @@ canvas {
     const PIXEL_COUNT_THRESHOLD = 600;
     let streaming = false;
 
-    const beepSound = new AudioContext();
+    let beepSound;
+
+    function initBeepSound() {
+      beepSound = new (window.AudioContext || window.webkitAudioContext)();
+    }
 
     function playBeep() {
+      if (!beepSound) return;
+
       const oscillator = beepSound.createOscillator();
       const gainNode = beepSound.createGain();
 
@@ -90,14 +96,15 @@ canvas {
 
       oscillator.type = "square";
       oscillator.frequency.setValueAtTime(1000, beepSound.currentTime);
-      oscillator.start();
       gainNode.gain.setValueAtTime(1, beepSound.currentTime);
 
+      oscillator.start();
       oscillator.stop(beepSound.currentTime + 0.1);
     }
 
     startBtn.addEventListener("click", async () => {
       try {
+        initBeepSound();
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
           audio: false
