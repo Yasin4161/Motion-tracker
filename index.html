@@ -1,145 +1,94 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Motion Tracker</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{
-  background:#000;font-family:Arial,Helvetica,sans-serif;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-height:100vh;color:#fff;text-align:center
+Motion Tracker * { margin: 0; padding: 0; box-sizing: border-box; }body { background: #000; font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; color: #fff; } 
+
+#wrapper {
+position: relative;
+max-width: 100%;
+overflow: hidden;
 }
-#wrapper{position:relative;max-width:100%;overflow:hidden}
-video,canvas{width:100vw;height:auto;max-height:85vh;border-radius:8px}
-canvas{position:absolute;top:0;left:0;pointer-events:none}
-#btn-start{
-  margin-top:1rem;padding:.6rem 1.2rem;background:#ff0040;color:#fff;
-  border:none;border-radius:6px;font-size:1rem;font-weight:bold;cursor:pointer
+
+video,
+canvas {
+width: 100vw; /* full screen width on mobile /
+height: auto;
+max-height: 85vh; / leave some room for text */
+border-radius: 8px;
 }
-#btn-start:disabled{opacity:.5}
-#status{margin-top:1rem}
-</style>
-</head>
-<body>
-<h1>Motion Tracker (Demo)</h1>
 
-<div id="wrapper">
-  <video id="video" playsinline autoplay muted></video>
-  <canvas id="canvas"></canvas>
-</div>
+canvas {
+position: absolute;
+top: 0;
+left: 0;
+pointer-events: none; /* so touches go through */
+}
 
-<button id="btn-start">Kamerayı Başlat</button>
-<p id="status">Başlamak için butona dokun.</p>
+#status {
+margin-top: 1rem;
+text-align: center;
+}
 
-<script>
-const video  = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx    = canvas.getContext("2d");
-const status = document.getElementById("status");
-const btn    = document.getElementById("btn-start");
+#btn-start {
+margin-top: 1rem;
+padding: 0.6rem 1.2rem;
+background: #ff0040; /* red */
+color: #fff;
+border: none;
+border-radius: 6px;
+font-size: 1rem;
+font-weight: bold;
+cursor: pointer;
+}
 
-const prevCanvas = document.createElement("canvas");
-const prevCtx    = prevCanvas.getContext("2d");
+#btn-start:disabled {
+opacity: 0.5;
+}
 
-const MOTION_THRESHOLD      = 40;   // piksel başına fark eşiği
-const PIXEL_COUNT_THRESHOLD = 600;  // kaç pikselden fazlası “hareket” olsun
-const BEEP_COOLDOWN_MS      = 500;  // iki bip arası en az süre
-const BEEP_DURATION         = 0.12; // saniye
-const BEEP_FREQUENCY        = 1000; // Hz
+Motion Tracker (Demo) 
+
+Tap "Start Camera" to begin.
+
+Start Camera // HTML elements const video = document.getElementById("video"); const canvas = document.getElementById("canvas"); const statusText = document.getElementById("status"); const startBtn = document.getElementById("btn-start"); 
+
+const ctx = canvas.getContext("2d");
+
+// Off‑screen canvas for previous frame
+let prevCanvas = document.createElement("canvas");
+let prevCtx = prevCanvas.getContext("2d");
+
+// Parameters
+const MOTION_THRESHOLD = 40; // per‑pixel diff threshold (0‑765)
+const PIXEL_COUNT_THRESHOLD = 600; // how many diff pixels before we consider it motion
 
 let streaming = false;
-let audioCtx;
-let lastBeep = 0;
 
-btn.addEventListener("click", async () => {
-  try {
-    // Ses motorunu buton tıklandığında başlat
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      await audioCtx.resume();
-    }
-
-    // Kamera iste
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }, audio: false
-    });
-    video.srcObject = stream;
-    status.textContent = "Kamera başlatıldı, hareket algılanıyor…";
-    btn.disabled = true;
-    streaming = true;
-  } catch (err) {
-    status.textContent = `Kamera hatası: ${err.message}`;
-  }
+startBtn.addEventListener("click", async () => {
+try {
+const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+video.srcObject = stream;
+statusText.textContent = "Camera initialized. Detecting motion...";
+startBtn.disabled = true;
+streaming = true;
+} catch (err) {
+statusText.textContent = Error accessing camera: ${err.message};
+}
 });
 
 video.addEventListener("loadedmetadata", () => {
-  canvas.width  = video.videoWidth  || 640;
-  canvas.height = video.videoHeight || 480;
-  prevCanvas.width  = canvas.width;
-  prevCanvas.height = canvas.height;
-  requestAnimationFrame(loop);
+// Match canvas sizes to video
+canvas.width = video.videoWidth;
+canvas.height = video.videoHeight;
+prevCanvas.width = video.videoWidth;
+prevCanvas.height = video.videoHeight;
+
+// Kick off drawing loop requestAnimationFrame(processFrame); 
+
 });
 
-function loop() {
-  if (!streaming) { requestAnimationFrame(loop); return; }
-
-  // Geçerli kare
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const curr = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  const prev = prevCtx.getImageData(0, 0, canvas.width, canvas.height).data;
-
-  let diffCount = 0;
-  let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-
-  for (let i = 0; i < curr.length; i += 4) {
-    const diff = Math.abs(curr[i]-prev[i]) +
-                 Math.abs(curr[i+1]-prev[i+1]) +
-                 Math.abs(curr[i+2]-prev[i+2]);
-    if (diff > MOTION_THRESHOLD) {
-      diffCount++;
-      const p   = i / 4;
-      const x   = p % canvas.width;
-      const y   = (p / canvas.width) | 0;
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  if (diffCount > PIXEL_COUNT_THRESHOLD) {
-    ctx.strokeStyle = "red";
-    ctx.lineWidth   = 4;
-    ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-
-    const now = Date.now();
-    if (now - lastBeep > BEEP_COOLDOWN_MS) {
-      beep();
-      lastBeep = now;
-    }
-  }
-
-  // Bu kareyi sakla
-  prevCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  requestAnimationFrame(loop);
+function processFrame() {
+if (!streaming) {
+requestAnimationFrame(processFrame);
+return;
 }
 
-function beep() {
-  if (!audioCtx) return;
-  const osc  = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = "sine";
-  osc.frequency.value = BEEP_FREQUENCY;
-  gain.gain.value = 0.2;
-  osc.connect(gain).connect(audioCtx.destination);
-  osc.start();
-  osc.stop(audioCtx.currentTime + BEEP_DURATION);
+// Draw current frame onto current canvas ctx.drawImage(video, 0, 0, canvas.width, canvas.height); // Get image data from both frames const currFrame = ctx.getImageData(0, 0, canvas.width, canvas.height); const prevFrame = prevCtx.getImageData(0, 0, prevCanvas.width, prevCanvas.height); const currData = currFrame.data; const prevData = prevFrame.data; let motionPixels = 0; let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0; // Compare pixels for (let i = 0; i < currData.length; i += 4) { const diff = Math.abs(currData[i] - prevData[i]) + Math.abs(currData[i + 1] - prevData[i + 1]) + Math.abs(currData[i + 2] - prevData[i + 2]); if (diff > MOTION_THRESHOLD) { motionPixels++; const pixelIndex = i / 4; const x = pixelIndex % canvas.width; const y = Math.floor(pixelIndex / canvas.width); if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; } } // Clear previous drawing ctx.clearRect(0, 0, canvas.width, canvas.height); // Draw video frame again, so rectangle sits on top ctx.drawImage(video, 0, 0, canvas.width, canvas.height); // If we detected enough motion pixels, draw rectangle if (motionPixels > PIXEL_COUNT_THRESHOLD) { ctx.strokeStyle = "red"; ctx.lineWidth = 4; ctx.strokeRect(minX, minY, maxX - minX, maxY - minY); } // Save current frame to prevCanvas for next iteration prevCtx.drawImage(video, 0, 0, prevCanvas.width, prevCanvas.height); requestAnimationFrame(processFrame); 
+
 }
-</script>
-</body>
-</html>
